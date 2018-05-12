@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-
+using BeaconsTest.Services.Beacons;
 using Foundation;
 using UIKit;
 
@@ -24,6 +24,14 @@ namespace BeaconsTest.iOS
         {
             global::Xamarin.Forms.Forms.Init();
             LoadApplication(new App());
+
+
+            var beaconService = Xamarin.Forms.DependencyService.Get<IBeaconMonitoringService>();
+
+            beaconService.InitializeService();
+            beaconService.StartMonitoring();
+            beaconService.StartRanging();
+
 
             return base.FinishedLaunching(app, options);
         }

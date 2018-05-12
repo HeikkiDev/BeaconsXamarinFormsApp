@@ -3,22 +3,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using BeaconsTest.Services.Beacons;
 using CoreLocation;
 using Foundation;
 using UIKit;
 
+[assembly: Xamarin.Forms.Dependency(typeof(BeaconsTest.iOS.Services.BeaconMonitoringService))]
 namespace BeaconsTest.iOS.Services
 {
-    public class BeaconMonitoringService : CLLocationManagerDelegate
+    public class BeaconMonitoringService : CLLocationManagerDelegate, IBeaconMonitoringService
     {
         private TaskCompletionSource<bool> tcsPermissions;
         private CLLocationManager locationManager;
+        private bool isRangingActive;
 
-        public BeaconMonitoringService()
-        {
-            locationManager = new CLLocationManager();
-            locationManager.Delegate = this;
-        }
+        public event EventHandler<ListChangedEventArgs> ListChanged;
+        public event EventHandler DataClearing;
 
         public Task<bool> GetPermissionsAsync()
         {
@@ -29,7 +29,20 @@ namespace BeaconsTest.iOS.Services
             return tcsPermissions.Task;
         }
 
-        public void MonitorBeacons()
+        // This method is used only for Android
+        public void OnRequestPermissionsResult(bool isGranted)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void InitializeService()
+        {
+            isRangingActive = false;
+            locationManager = new CLLocationManager();
+            locationManager.Delegate = this;
+        }
+
+        public void StartMonitoring()
         {
             if (CLLocationManager.IsMonitoringAvailable(typeof(CLBeaconRegion)))
             {
@@ -41,6 +54,11 @@ namespace BeaconsTest.iOS.Services
                 var region = new CLBeaconRegion(proximityUUID, beaconID);
                 this.locationManager.StartMonitoring(region);
             }
+        }
+
+        public void StartRanging()
+        {
+            isRangingActive = true;
         }
 
         // Detectar cuando los permisos cambien, y comprobar si han sido concedidos por el usuario
@@ -58,18 +76,15 @@ namespace BeaconsTest.iOS.Services
             }
         }
 
-        // When Beacon enter the region created in MonitorBeacons()
+        // When Beacon enter the region created in StartMonitoring()
         public override void RegionEntered(CLLocationManager manager, CLRegion region)
         {
             base.RegionEntered(manager, region);
 
             if (region is CLBeaconRegion) {
-                // Start ranging only if the feature is available.
-                if (CLLocationManager.IsRangingAvailable) {
+                // Start ranging only if the feature is available and isRangingActive is set to true
+                if (CLLocationManager.IsRangingAvailable && isRangingActive) {
                     manager.StartRangingBeacons((CLBeaconRegion)region);
-
-                    // TODO: Store the beacon so that ranging can be stopped on demand.
-                    //beaconsToRange.append(region as CLBeaconRegion)
                 }
             }
         }
@@ -82,11 +97,10 @@ namespace BeaconsTest.iOS.Services
             if (region is CLBeaconRegion)
             {
                 // Start ranging only if the feature is available.
-                if (CLLocationManager.IsRangingAvailable)
+                if (CLLocationManager.IsRangingAvailable && isRangingActive)
                 {
-                    manager.StopRangingBeacons((CLBeaconRegion)region);
-
-                    // TODO: Remove from local array Store the beacon
+                    // TODO: Ver qué hace realmente este Stop
+                    ///////////////manager.StopRangingBeacons((CLBeaconRegion)region);
                 }
             }
         }
@@ -97,16 +111,42 @@ namespace BeaconsTest.iOS.Services
         {
             base.DidRangeBeacons(manager, beacons, region);
 
-            if (beacons.Length > 0) {
-                var nearestBeacon = beacons.First();
-                var major = nearestBeacon.Major;
-                var minor = nearestBeacon.Minor;
+            if (beacons.Length > 0)
+            {
+                //var nearestBeacon = beacons.First();
+                //var major = nearestBeacon.Major;
+                //var minor = nearestBeacon.Minor;
 
-                var proximityInMeters = nearestBeacon.Accuracy;
-                var proximity = nearestBeacon.Proximity;
+                //var proximityInMeters = nearestBeacon.Accuracy;
+                //var proximity = nearestBeacon.Proximity;
                 
-                // TODO...
+                OnListChanged(beacons);
             }
+            else
+                OnDataClearing();
+        }
+
+        private void OnListChanged(CLBeacon[] beacons)
+        {
+            var handler = ListChanged;
+            if (handler != null)
+            {
+                var data = new List<SharedBeacon>();
+
+                foreach (var beacon in beacons)
+                {
+                    data.Add(new SharedBeacon { Id = beacon.ProximityUuid.ToString(), Distance = string.Format("{0:N2}m", beacon.Accuracy) });
+                }
+
+                handler(this, new ListChangedEventArgs(data));
+            }
+        }
+
+        private void OnDataClearing()
+        {
+            // Clear here local list of Beacons if needed
+
+            DataClearing?.Invoke(this, EventArgs.Empty);
         }
     }
 }
